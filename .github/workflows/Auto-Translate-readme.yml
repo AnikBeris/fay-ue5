@@ -20,17 +20,26 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      max-parallel: 1
       matrix:
         include:
           - language: "russian"
+            code: "ru"
             file: "README.ru.md"
           - language: "english"
+            code: "en"
             file: "README.en.md"
           - language: "french"
+            code: "fr"
             file: "README.fr.md"
 
     steps:
       - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: compiled-readme
+          path: .
 
       - uses: actions/setup-python@v6
         with:
@@ -126,6 +135,9 @@ jobs:
           name: ${{ matrix.file }}
           path: LanguageReadme/${{ matrix.file }}
 
+
+
+          
 
 # ==================== 2. LANGUAGE INDEX ====================
   generate-language-index:
