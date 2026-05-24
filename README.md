@@ -1,14 +1,3 @@
-<p align="center">
-  <strong>-------></strong>
-  <a href="/LanguageReadme/README.md">中文</a> |
-  <a href="/LanguageReadme/README.ru.md">Russian</a> |
-  <a href="/LanguageReadme/README.en.md">English</a> |
-  <a href="/LanguageReadme/README.fr.md">Français</a>
-  <strong><-------</strong>
-</p>
-
----
-
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./images/icon.png" alt="Fay">
