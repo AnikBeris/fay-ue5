@@ -15,6 +15,7 @@ permissions:
 
 env:
   BRANCH_PREFIX: update/readme-
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ==================== СБОРКА ОСНОВНОГО README ====================
@@ -139,9 +140,26 @@ jobs:
       - name: Save translation
         run: |
           mkdir -p LanguageReadme
-          cat > "LanguageReadme/${{ matrix.file }}" <<'EOT'
-          ${{ steps.translate.outputs.translated-text }}
-          EOT
+
+          {
+            cat .github/README_PARTS/0.Language.md
+            echo
+            echo
+
+            echo '${{ steps.translate.outputs.translated-text }}' \
+              | sed -E '
+                  s|\]\(\./|\](<../|g;
+                  s|\(<\./|\(<../|g;
+                '
+
+          } > "LanguageReadme/${{ matrix.file }}"
+
+#      - name: Save translation
+#        run: |
+#          mkdir -p LanguageReadme
+#          cat > "LanguageReadme/${{ matrix.file }}" <<'EOT'
+#          ${{ steps.translate.outputs.translated-text }}
+#          EOT
 
       - name: Upload translation
         uses: actions/upload-artifact@v5
