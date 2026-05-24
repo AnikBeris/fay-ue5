@@ -12,11 +12,13 @@ env:
   BRANCH_PREFIX: update/readme-
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+
 jobs:
 
-  # ==================== 1. TRANSLATE ====================
+# ==================== 1. TRANSLATE ====================
   translate:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
         include:
@@ -37,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: pip install openai tiktoken
 
-      - name: Translate
+      - name: Translate README
         id: translate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,18 +52,19 @@ jobs:
               api_key=os.environ["GITHUB_TOKEN"]
           )
 
-          encoding = tiktoken.encoding_for_model("gpt-4o")
+          encoding = tiktoken.get_encoding("o200k_base")
 
-          def count_tokens(t): return len(encoding.encode(t))
+          def count_tokens(t):
+              return len(encoding.encode(t))
 
           def translate(text, lang):
               return client.chat.completions.create(
                   model="gpt-4o",
-                  messages=[{"role":"user","content":f"Translate to {lang}:\n\n{text}"}],
+                  messages=[{"role": "user", "content": f"Translate to {lang}:\n\n{text}"}],
                   temperature=0.3
               ).choices[0].message.content
 
-          with open("README.md","r",encoding="utf-8") as f:
+          with open("README.md", "r", encoding="utf-8") as f:
               text = f.read()
 
           paragraphs = re.split(r'\n\n+', text)
@@ -83,7 +86,7 @@ jobs:
 
           result = "\n\n".join(chunks)
 
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write("translated<<EOF\n")
               f.write(result)
               f.write("\nEOF\n")
@@ -93,31 +96,31 @@ jobs:
         run: |
           mkdir -p LanguageReadme
 
-          echo "${{ steps.translate.outputs.translated }}" \
-            | sed -E '
-                s|\]\(\./|\](<../|g;
-                s|\(<\./|\(<../|g;
-              ' \
-            > "LanguageReadme/${{ matrix.file }}"
+          printf "%s" "${{ steps.translate.outputs.translated }}" \
+          | sed -E '
+              s|\]\(\./|\](<../|g;
+              s|\(<\./|\(<../|g;
+            ' \
+          > "LanguageReadme/${{ matrix.file }}"
 
       - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.file }}
           path: LanguageReadme/${{ matrix.file }}
 
-  # ==================== 2. LANGUAGE INDEX ====================
+
+# ==================== 2. LANGUAGE INDEX ====================
   generate-language-index:
-    needs: translate
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v5
 
-      - name: Create Language Index
+      - name: Create index
         run: |
           mkdir -p .github/README_PARTS
 
-          cat << 'EOF' > LanguageReadme/file.md
+          cat << 'EOF' > .github/README_PARTS/0.Language.md
           <p align="center">
             <strong>-------></strong>
             <a href="/LanguageReadme/README.md">中文</a> |
@@ -126,13 +129,12 @@ jobs:
             <a href="/LanguageReadme/README.fr.md">Français</a>
             <strong><-------</strong>
           </p>
-
+              
           <br/>
-          
+              
           ---
           
           <br/>
-
           EOF
 
       - uses: actions/upload-artifact@v5
@@ -140,9 +142,10 @@ jobs:
           name: language-index
           path: .github/README_PARTS/0.Language.md
 
-  # ==================== 3. BUILD FINAL README ====================
+
+# ==================== 3. BUILD README ====================
   compile-readme:
-    needs: generate-language-index
+    needs: [translate, generate-language-index]
     runs-on: ubuntu-latest
 
     steps:
@@ -153,27 +156,20 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Build final README.md
+      - name: Build README
         run: |
           mkdir -p LanguageReadme .github/README_PARTS
-
-          cp artifacts/README.ru.md LanguageReadme/ 2>/dev/null || true
-          cp artifacts/README.en.md LanguageReadme/ 2>/dev/null || true
-          cp artifacts/README.fr.md LanguageReadme/ 2>/dev/null || true
 
           cat artifacts/0.Language.md > README.md
           echo "" >> README.md
-          cat README.md >> README.md.tmp 2>/dev/null || true
-          mv README.md.tmp README.md
 
-      - uses: actions/upload-artifact@v5
-        with:
-          name: compiled-readme
-          path: README.md
+          # если позже добавишь основной контент — сюда вставишь
+          cat README.md >> README.md
 
-  # ==================== 4. PR ====================
+
+# ==================== 4. PR ====================
   create-pr:
-    needs: [compile-readme, translate, generate-language-index]
+    needs: compile-readme
     runs-on: ubuntu-latest
 
     steps:
@@ -184,16 +180,13 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Restore
+      - name: Restore files
         run: |
           mkdir -p LanguageReadme .github/README_PARTS
-
-          cp artifacts/README.md README.md 2>/dev/null || true
 
           cp artifacts/README.ru.md LanguageReadme/ 2>/dev/null || true
           cp artifacts/README.en.md LanguageReadme/ 2>/dev/null || true
           cp artifacts/README.fr.md LanguageReadme/ 2>/dev/null || true
-
           cp artifacts/0.Language.md .github/README_PARTS/0.Language.md 2>/dev/null || true
 
       - name: Create Pull Request
@@ -206,9 +199,7 @@ jobs:
             Translation updates:
             - Russian
             - English
-            - Français
-
-            Run: ${{ github.run_id }}
+            - French
           branch: ${{ env.BRANCH_PREFIX }}${{ github.run_id }}
           base: main
           delete-branch: true
