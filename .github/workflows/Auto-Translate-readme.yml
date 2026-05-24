@@ -21,7 +21,7 @@ jobs:
   compile-readme:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -41,12 +41,12 @@ jobs:
           fi
 
       - name: Upload compiled README
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: compiled-readme
           path: README.md
 
-  # ==================== ПЕРЕВОДЫ ====================
+  # ==================== TRANSLATIONS ====================
   translate:
     needs: compile-readme
     runs-on: ubuntu-latest
@@ -63,14 +63,14 @@ jobs:
             code: "fr"
             file: "README.fr.md"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: compiled-readme
           path: .
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -144,19 +144,19 @@ jobs:
           EOT
 
       - name: Upload translation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.file }}
           path: LanguageReadme/${{ matrix.file }}
 
-  # ==================== ОБНОВЛЕНИЕ ИНДЕКСА ЯЗЫКОВ ====================
+  # ==================== LANGUAGE INDEX UPDATE ====================
   generate-language-index:
     needs: translate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
@@ -168,7 +168,7 @@ jobs:
           <p align="center">
             <strong>-------></strong>
             <a href="/README.md">中文</a> |
-            <a href="/README.ru.md">Русский</a> |
+            <a href="/README.ru.md">Russian</a> |
             <a href="/README.en.md">English</a> |
             <a href="/README.fr.md">Français</a>
             <strong><-------</strong>
@@ -176,7 +176,7 @@ jobs:
           EOF
 
       - name: Upload Language Index
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: language-index
           path: .github/README_PARTS/0.Language.md
@@ -186,11 +186,11 @@ jobs:
     needs: [compile-readme, translate, generate-language-index]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
@@ -198,19 +198,24 @@ jobs:
       - name: Restore files
         run: |
           mkdir -p LanguageReadme .github/README_PARTS
+
           cp artifacts/README.md ./README.md 2>/dev/null || true
-          cp artifacts/README.*.md LanguageReadme/ 2>/dev/null || true
-          cp artifacts/0.Language.md .github/README_PARTS/ 2>/dev/null || true
+
+          cp artifacts/README.ru.md LanguageReadme/ 2>/dev/null || true
+          cp artifacts/README.en.md LanguageReadme/ 2>/dev/null || true
+          cp artifacts/README.fr.md LanguageReadme/ 2>/dev/null || true
+
+          cp artifacts/0.Language.md .github/README_PARTS/0.Language.md 2>/dev/null || true
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore: update README translations (auto)"
           title: "chore: update README translations (auto)"
           body: |
-            Автоматическое обновление переводов:
-            - Русский
+            Translation updates:
+            - Russian
             - English
             - Français
 
@@ -221,6 +226,5 @@ jobs:
           labels: automated, documentation, translation
           add-paths: |
             README.md
-            README.*.md
             LanguageReadme/
             .github/README_PARTS/0.Language.md
