@@ -1,6 +1,8 @@
 <div align="center">
-    <br>
-    <img src="images/icon.png" alt="Fay">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./images/icon.png" alt="Fay">
+    <img alt="Project Logo" src="./images/icon.png" alt="Fay" width="256" height="auto">
+  </picture>
     <h1>FAY</h1>
     <h3>UE5 数字人工程(Metahuman)</h3>
 </div>
