@@ -117,7 +117,7 @@ jobs:
         run: |
           mkdir -p .github/README_PARTS
 
-          cat > .github/README_PARTS/0.Language.md << 'EOF'
+          cat << 'EOF' > LanguageReadme/file.md
           <p align="center">
             <strong>-------></strong>
             <a href="/LanguageReadme/README.md">中文</a> |
@@ -132,7 +132,7 @@ jobs:
           ---
           
           <br/>
-          
+
           EOF
 
       - uses: actions/upload-artifact@v5
