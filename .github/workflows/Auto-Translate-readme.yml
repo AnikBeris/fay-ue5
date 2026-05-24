@@ -45,63 +45,81 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python - <<'EOF'
-          import os, openai, tiktoken, re
+          import os, re
+          from openai import OpenAI
+          import tiktoken
 
-          client = openai.OpenAI(
+          client = OpenAI(
               base_url="https://models.inference.ai.azure.com/",
               api_key=os.environ["GITHUB_TOKEN"]
           )
 
-          encoding = tiktoken.get_encoding("o200k_base")
+          enc = tiktoken.encoding_for_model("gpt-4o")
 
-          def count_tokens(t):
-              return len(encoding.encode(t))
+          def tokens(t): 
+              return len(enc.encode(t))
 
           def translate(text, lang):
               return client.chat.completions.create(
                   model="gpt-4o",
-                  messages=[{"role": "user", "content": f"Translate to {lang}:\n\n{text}"}],
+                  messages=[{
+                      "role": "user",
+                      "content": f"Translate to {lang}. Keep code, links, paths unchanged:\n\n{text}"
+                  }],
                   temperature=0.3
               ).choices[0].message.content
 
-          with open("README.md", "r", encoding="utf-8") as f:
+          with open("README.md","r",encoding="utf-8") as f:
               text = f.read()
 
-          paragraphs = re.split(r'\n\n+', text)
+          parts = re.split(r'\n\n+', text)
 
-          chunks, cur, tok = [], [], 0
           MAX = 5500
+          chunks, cur, size = [], [], 0
 
-          for p in paragraphs:
-              t = count_tokens(p) + 50
-              if tok + t > MAX and cur:
+          for p in parts:
+              t = tokens(p) + 50
+              if size + t > MAX and cur:
                   chunks.append(translate("\n\n".join(cur), "${{ matrix.language }}"))
-                  cur, tok = [p], t
+                  cur = [p]
+                  size = t
               else:
                   cur.append(p)
-                  tok += t
+                  size += t
 
           if cur:
               chunks.append(translate("\n\n".join(cur), "${{ matrix.language }}"))
 
           result = "\n\n".join(chunks)
 
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write("translated<<EOF\n")
+          # FIX LINKS (важно для твоего images/LanguageReadme кейса)
+          result = result.replace('](/', '](<../')
+          result = result.replace('(./', '(<../')
+
+          out_file = f"LanguageReadme/${{ matrix.file }}"
+          os.makedirs("LanguageReadme", exist_ok=True)
+
+          with open(out_file, "w", encoding="utf-8") as f:
               f.write(result)
-              f.write("\nEOF\n")
           EOF
 
-      - name: Save translation
-        run: |
-          mkdir -p LanguageReadme
+      - name: Upload translation
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.file }}
+          path: LanguageReadme/${{ matrix.file }}
 
-          printf "%s" "${{ steps.translate.outputs.translated }}" \
-          | sed -E '
-              s|\]\(\./|\](<../|g;
-              s|\(<\./|\(<../|g;
-            ' \
-          > "LanguageReadme/${{ matrix.file }}"
+
+#      - name: Save translation
+#        run: |
+#          mkdir -p LanguageReadme
+#
+#          printf "%s" "${{ steps.translate.outputs.translated }}" \
+#          | sed -E '
+#              s|\]\(\./|\](<../|g;
+#              s|\(<\./|\(<../|g;
+#            ' \
+#          > "LanguageReadme/${{ matrix.file }}"
 
       - uses: actions/upload-artifact@v5
         with:
@@ -129,9 +147,9 @@ jobs:
             <a href="/LanguageReadme/README.fr.md">Français</a>
             <strong><-------</strong>
           </p>
-              
+
           <br/>
-              
+
           ---
           
           <br/>
