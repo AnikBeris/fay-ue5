@@ -1,3 +1,14 @@
+<p align="center">
+  <strong>-------></strong>
+  <a href="/README.md">中文</a> |
+  <a href="/README.ru.md">Russian</a> |
+  <a href="/README.en.md">English</a> |
+  <a href="/README.fr.md">Français</a>
+  <strong><-------</strong>
+</p>
+
+---
+
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./images/icon.png" alt="Fay">
@@ -18,7 +29,7 @@
 - 版本：1.0.0
 - 章节数：5
 - 播放及修改：https://player.fay-agent.com/
-- 导入课程包：UE 数字人启动.zip
+- 导入课程包：[UE 数字人启动.zip](<UE 数字人启动.zip>)
 
 ## 封面
 
