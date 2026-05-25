@@ -5,7 +5,6 @@ on:
 #  push:
 #    branches: [ main ]
 #    paths:
-#      - ".github/README_PARTS/**"
 #      - "README.md"
 
 permissions:
@@ -27,7 +26,8 @@ jobs:
       - name: Create Language Index
         run: |
           mkdir -p .github/README_PARTS
-          cat > .github/README_PARTS/0.Language.md << 'EOF'
+
+          cat << 'EOF' > .github/README_PARTS/0.Language.md
           <p align="center">
             <strong>-------></strong>
             <a href="/LanguageReadme/README.md">中文</a> |
@@ -36,6 +36,12 @@ jobs:
             <a href="/LanguageReadme/README.fr.md">Français</a>
             <strong><-------</strong>
           </p>
+
+          <br/>
+
+          ---
+          
+          <br/>
           EOF
 
       - name: Upload Language Index
@@ -44,55 +50,9 @@ jobs:
           name: language-index
           path: .github/README_PARTS/0.Language.md
 
-  # ==================== 2. BUILD MAIN README ====================
-  compile-readme:
-    needs: generate-language-index
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@v5
-        with:
-          name: language-index
-          path: .github/README_PARTS/
-
-      - name: Build README.md from parts
-        run: |
-          PARTS=".github/README_PARTS"
-          OUTPUT="README.md"
-          TEMP_README="temp_README.md"
-
-          # Check if original README exists
-          if [ ! -f "README.md" ]; then
-            echo "ERROR: README.md not found in repository root"
-            exit 1
-          fi
-
-          # Save original README to temp file
-          cp README.md "$TEMP_README"
-
-          # Build new README with language index
-          if [ -d "$PARTS" ] && [ -f "$PARTS/0.Language.md" ]; then
-            cat "$PARTS/0.Language.md" > "$OUTPUT"
-            echo -e "\n\n" >> "$OUTPUT"
-            cat "$TEMP_README" >> "$OUTPUT"
-            echo "README.md built successfully"
-          else
-            echo "WARNING: 0.Language.md not found, keeping original README.md"
-            cp "$TEMP_README" "$OUTPUT"
-          fi
-
-      - name: Upload compiled README
-        uses: actions/upload-artifact@v5
-        with:
-          name: compiled-readme
-          path: README.md
-
-  # ==================== 3. TRANSLATIONS ====================
+  # ==================== 2. TRANSLATIONS ====================
   translate:
-    needs: compile-readme
+    needs: generate-language-index
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -108,11 +68,8 @@ jobs:
             file: "README.fr.md"
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/download-artifact@v5
         with:
-          name: compiled-readme
-          path: .
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:
@@ -169,7 +126,7 @@ jobs:
               )
               return response.choices[0].message.content
 
-          # Read the compiled README
+          # Read the original README
           with open("README.md", "r", encoding="utf-8") as f:
               text = f.read()
 
@@ -183,7 +140,7 @@ jobs:
               if tokens + p_tokens > MAX_TOKENS and current:
                   try:
                       translated_chunk = translate_chunk("\n\n".join(current), "${{ matrix.language }}")
-                      # Fix links in translated chunk
+                      # Fix links for images and files (for files in subfolder)
                       translated_chunk = translated_chunk.replace('](/', '](<../')
                       translated_chunk = translated_chunk.replace('(./', '(<../')
                       chunks.append(translated_chunk)
@@ -198,7 +155,7 @@ jobs:
           if current:
               try:
                   translated_chunk = translate_chunk("\n\n".join(current), "${{ matrix.language }}")
-                  # Fix links in translated chunk
+                  # Fix links for images and files (for files in subfolder)
                   translated_chunk = translated_chunk.replace('](/', '](<../')
                   translated_chunk = translated_chunk.replace('(./', '(<../')
                   chunks.append(translated_chunk)
@@ -208,11 +165,10 @@ jobs:
 
           translated = "\n\n".join(chunks)
 
-          # Save to file
+          # Save to output
           with open("translated_temp.md", "w", encoding="utf-8") as f:
               f.write(translated)
 
-          # Read for GitHub output
           with open("translated_temp.md", "r", encoding="utf-8") as f:
               translated_content = f.read()
 
@@ -226,15 +182,12 @@ jobs:
         run: |
           mkdir -p LanguageReadme
           
-          # Save translation
           printf '%s' "${{ steps.translate.outputs.translated-text }}" > "LanguageReadme/${{ matrix.file }}"
           
-          # Verify file was created and not empty
           if [ -f "LanguageReadme/${{ matrix.file }}" ] && [ -s "LanguageReadme/${{ matrix.file }}" ]; then
             echo "Successfully saved translation to LanguageReadme/${{ matrix.file }}"
-            echo "File size: $(wc -c < LanguageReadme/${{ matrix.file }}) bytes"
           else
-            echo "ERROR: Failed to save translation to LanguageReadme/${{ matrix.file }}"
+            echo "ERROR: Failed to save translation"
             exit 1
           fi
 
@@ -244,9 +197,9 @@ jobs:
           name: ${{ matrix.file }}
           path: LanguageReadme/${{ matrix.file }}
 
-  # ==================== 4. FINAL BUILD ====================
+  # ==================== 3. FINAL BUILD ====================
   final-build:
-    needs: [compile-readme, translate, generate-language-index]
+    needs: [translate, generate-language-index]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -256,16 +209,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Restore files
+      - name: Prepare final structure
         run: |
           mkdir -p LanguageReadme .github/README_PARTS
 
-          # Restore main README
-          if [ -f artifacts/README.md ]; then
-            cp artifacts/README.md ./README.md
-            echo "Restored README.md"
-          else
-            echo "WARNING: README.md not found in artifacts"
+          # Restore language index
+          if [ -f artifacts/0.Language.md ]; then
+            cp artifacts/0.Language.md .github/README_PARTS/
+            echo "Restored 0.Language.md"
           fi
 
           # Restore translations
@@ -273,33 +224,21 @@ jobs:
             if [ -f "artifacts/$file" ]; then
               cp "artifacts/$file" LanguageReadme/
               echo "Restored $file"
-            else
-              echo "WARNING: $file not found in artifacts"
             fi
           done
-
-          # Restore language index
-          if [ -f artifacts/0.Language.md ]; then
-            cp artifacts/0.Language.md .github/README_PARTS/
-            echo "Restored 0.Language.md"
-          else
-            echo "WARNING: 0.Language.md not found in artifacts"
-          fi
 
       - name: Upload final files
         uses: actions/upload-artifact@v5
         with:
           name: final-output
           path: |
-            README.md
             LanguageReadme/
             .github/README_PARTS/
 
-  # ==================== 5. CREATE PULL REQUEST ====================
+  # ==================== 4. CREATE PULL REQUEST ====================
   create-pr:
     needs: final-build
     runs-on: ubuntu-latest
-    if: success()
     steps:
       - uses: actions/checkout@v5
         with:
@@ -310,27 +249,6 @@ jobs:
           name: final-output
           path: .
 
-      - name: Verify files before PR
-        run: |
-          echo "Files to be committed:"
-          echo "README.md: $(wc -l < README.md) lines"
-          
-          for file in LanguageReadme/*.md; do
-            if [ -f "$file" ]; then
-              echo "$file: $(wc -l < $file) lines"
-            fi
-          done
-          
-          # Check if translations have content
-          for file in LanguageReadme/README.en.md LanguageReadme/README.ru.md LanguageReadme/README.fr.md; do
-            if [ -f "$file" ]; then
-              lines=$(wc -l < "$file")
-              if [ "$lines" -lt 50 ]; then
-                echo "WARNING: $file has only $lines lines - translation may be incomplete"
-              fi
-            fi
-          done
-
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
@@ -339,21 +257,9 @@ jobs:
           title: "chore: update README translations"
           body: |
             Translation updates:
-            - Russian
-            - English
-            - Français
-
-            .
-            ├── README.md
-            ├── LanguageReadme/
-            │   ├── README.ru.md
-            │   ├── README.en.md
-            │   └── README.fr.md
-            └── .github/
-            │   └── README_PARTS/
-            │       └── 0.Language.md
-
-
+            - 🇷🇺 Russian
+            - 🇬🇧 English
+            - 🇫🇷 French
 
             Run: ${{ github.run_id }}
           branch: ${{ env.BRANCH_PREFIX }}translations-${{ github.run_id }}
@@ -361,6 +267,5 @@ jobs:
           delete-branch: true
           labels: automated, documentation, translation
           add-paths: |
-            README.md
             LanguageReadme/
             .github/README_PARTS/
