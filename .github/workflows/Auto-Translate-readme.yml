@@ -62,6 +62,7 @@ jobs:
         run: |
           PARTS=".github/README_PARTS"
           OUTPUT="README.md"
+          TEMP_README="temp_README.md"
 
           # Check if original README exists
           if [ ! -f "README.md" ]; then
@@ -69,18 +70,18 @@ jobs:
             exit 1
           fi
 
-          # Save original README
-          cp README.md original_readme.md
+          # Save original README to temp file
+          cp README.md "$TEMP_README"
 
-          # Build new README
+          # Build new README with language index
           if [ -d "$PARTS" ] && [ -f "$PARTS/0.Language.md" ]; then
             cat "$PARTS/0.Language.md" > "$OUTPUT"
             echo -e "\n\n" >> "$OUTPUT"
-            cat original_readme.md >> "$OUTPUT"
+            cat "$TEMP_README" >> "$OUTPUT"
             echo "README.md built successfully"
           else
             echo "WARNING: 0.Language.md not found, keeping original README.md"
-            cp original_readme.md "$OUTPUT"
+            cp "$TEMP_README" "$OUTPUT"
           fi
 
       - name: Upload compiled README
@@ -146,53 +147,72 @@ jobs:
               return len(encoding.encode(text))
 
           def translate_chunk(chunk, target):
-              prompt = f"""Technical terms (UE5, Metahuman, Fay, Unreal Engine, GitHub, etc.) leave in English.
-          Do not translate code blocks, links and paths.
+              prompt = f"""You are a professional technical translator.
 
-          Translate the following text to {target}:
+              Translation rules:
+              1. Technical terms (UE5, Metahuman, Fay, Unreal Engine, GitHub, AI, etc.) MUST remain in English
+              2. Do NOT translate content inside code blocks (between ```)
+              3. Do NOT translate links (URLs) and file paths (./images/...)
+              4. Do NOT translate names, emails
+              5. Preserve ALL Markdown formatting (headers, lists, bold, italic, etc.)
+              6. Preserve ALL emojis and special characters
+              7. Translate ONLY the natural language text
 
-          {chunk}"""
-              resp = client.chat.completions.create(
+              Translate the following text to {target} EXACTLY, keeping ALL structure and formatting:
+
+              {chunk}"""
+              
+              response = client.chat.completions.create(
                   model="gpt-4o",
                   messages=[{"role": "user", "content": prompt}],
                   temperature=0.3
               )
-              return resp.choices[0].message.content
+              return response.choices[0].message.content
 
+          # Read the compiled README
           with open("README.md", "r", encoding="utf-8") as f:
               text = f.read()
 
+          # Split into paragraphs
           paragraphs = re.split(r'\n\n+', text)
           chunks, current, tokens = [], [], 0
-          MAX_TOKENS = 5500
+          MAX_TOKENS = 5000
 
-          for p in paragraphs:
-              p_tokens = count_tokens(p) + 50
+          for para in paragraphs:
+              p_tokens = count_tokens(para) + 50
               if tokens + p_tokens > MAX_TOKENS and current:
                   try:
-                      chunks.append(translate_chunk("\n\n".join(current), "${{ matrix.language }}"))
+                      translated_chunk = translate_chunk("\n\n".join(current), "${{ matrix.language }}")
+                      # Fix links in translated chunk
+                      translated_chunk = translated_chunk.replace('](/', '](<../')
+                      translated_chunk = translated_chunk.replace('(./', '(<../')
+                      chunks.append(translated_chunk)
                   except Exception as e:
                       print(f"Translation error: {e}")
                       chunks.append("\n\n".join(current))
-                  current, tokens = [p], p_tokens
+                  current, tokens = [para], p_tokens
               else:
-                  current.append(p)
+                  current.append(para)
                   tokens += p_tokens
 
           if current:
               try:
-                  chunks.append(translate_chunk("\n\n".join(current), "${{ matrix.language }}"))
+                  translated_chunk = translate_chunk("\n\n".join(current), "${{ matrix.language }}")
+                  # Fix links in translated chunk
+                  translated_chunk = translated_chunk.replace('](/', '](<../')
+                  translated_chunk = translated_chunk.replace('(./', '(<../')
+                  chunks.append(translated_chunk)
               except Exception as e:
                   print(f"Translation error: {e}")
                   chunks.append("\n\n".join(current))
 
           translated = "\n\n".join(chunks)
 
-          # Save to output file first
+          # Save to file
           with open("translated_temp.md", "w", encoding="utf-8") as f:
               f.write(translated)
 
-          # Then read for GitHub output
+          # Read for GitHub output
           with open("translated_temp.md", "r", encoding="utf-8") as f:
               translated_content = f.read()
 
@@ -206,12 +226,13 @@ jobs:
         run: |
           mkdir -p LanguageReadme
           
-          # Save translation safely using printf
-          printf '%s' "${{ steps.translate.outputs.translated-text }}" | sed -E 's|\]\(\./|\](<../|g' > "LanguageReadme/${{ matrix.file }}"
+          # Save translation
+          printf '%s' "${{ steps.translate.outputs.translated-text }}" > "LanguageReadme/${{ matrix.file }}"
           
-          # Verify file was created
+          # Verify file was created and not empty
           if [ -f "LanguageReadme/${{ matrix.file }}" ] && [ -s "LanguageReadme/${{ matrix.file }}" ]; then
             echo "Successfully saved translation to LanguageReadme/${{ matrix.file }}"
+            echo "File size: $(wc -c < LanguageReadme/${{ matrix.file }}) bytes"
           else
             echo "ERROR: Failed to save translation to LanguageReadme/${{ matrix.file }}"
             exit 1
@@ -292,15 +313,23 @@ jobs:
       - name: Verify files before PR
         run: |
           echo "Files to be committed:"
-          ls -la README.md
-          ls -la LanguageReadme/ || echo "LanguageReadme directory not found"
-          ls -la .github/README_PARTS/ || echo "README_PARTS directory not found"
+          echo "README.md: $(wc -l < README.md) lines"
           
-          # Check if any translations were created
-          if [ ! -d "LanguageReadme" ] || [ -z "$(ls -A LanguageReadme)" ]; then
-            echo "ERROR: No translation files found"
-            exit 1
-          fi
+          for file in LanguageReadme/*.md; do
+            if [ -f "$file" ]; then
+              echo "$file: $(wc -l < $file) lines"
+            fi
+          done
+          
+          # Check if translations have content
+          for file in LanguageReadme/README.en.md LanguageReadme/README.ru.md LanguageReadme/README.fr.md; do
+            if [ -f "$file" ]; then
+              lines=$(wc -l < "$file")
+              if [ "$lines" -lt 50 ]; then
+                echo "WARNING: $file has only $lines lines - translation may be incomplete"
+              fi
+            fi
+          done
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
@@ -310,15 +339,21 @@ jobs:
           title: "chore: update README translations"
           body: |
             Translation updates:
+            - Russian
+            - English
+            - Français
+
             .
             ├── README.md
             ├── LanguageReadme/
-            │   ├── README.ru.md (Russian)
-            │   ├── README.en.md (English)
-            │   └── README.fr.md (Français)
+            │   ├── README.ru.md
+            │   ├── README.en.md
+            │   └── README.fr.md
             └── .github/
-                └── README_PARTS/
-                    └── 0.Language.md
+            │   └── README_PARTS/
+            │       └── 0.Language.md
+
+
 
             Run: ${{ github.run_id }}
           branch: ${{ env.BRANCH_PREFIX }}translations-${{ github.run_id }}
