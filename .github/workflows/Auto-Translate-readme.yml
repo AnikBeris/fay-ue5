@@ -2,10 +2,6 @@ name: Update README & Auto-Translate
 
 on:
   workflow_dispatch:
-#  push:
-#    branches: [ main ]
-#    paths:
-#      - "README.md"
 
 permissions:
   contents: write
@@ -26,7 +22,6 @@ jobs:
       - name: Create Language Index
         run: |
           mkdir -p .github/README_PARTS
-
           cat << 'EOF' > .github/README_PARTS/0.Language.md
           <p align="center">
             <strong>-------></strong>
@@ -36,11 +31,8 @@ jobs:
             <a href="/LanguageReadme/README.fr.md">Français</a>
             <strong><-------</strong>
           </p>
-
           <br/>
-
           ---
-          
           <br/>
           EOF
 
@@ -55,6 +47,7 @@ jobs:
     needs: generate-language-index
     runs-on: ubuntu-latest
     strategy:
+      max-parallel: 1                      # переводим по очереди
       matrix:
         include:
           - language: "russian"
@@ -80,8 +73,7 @@ jobs:
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          restore-keys: ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: pip install openai tiktoken
@@ -89,7 +81,6 @@ jobs:
       - name: Translate to ${{ matrix.language }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_FILE: ${{ matrix.file }}
         run: |
           python - <<'EOF'
           import os, openai, tiktoken, re
@@ -100,7 +91,7 @@ jobs:
           )
           encoding = tiktoken.encoding_for_model("gpt-4o")
           target_lang = "${{ matrix.language }}"
-          target_file = os.environ["TARGET_FILE"]
+          output_file = "${{ matrix.file }}"
 
           def count_tokens(text):
               return len(encoding.encode(text))
@@ -108,31 +99,26 @@ jobs:
           def translate_chunk(chunk, target):
               prompt = f"""You are a professional technical translator.
 
-              Translation rules:
-              1. Technical terms (UE5, Metahuman, Fay, Unreal Engine, GitHub, AI, etc.) MUST remain in English
-              2. Do NOT translate content inside code blocks (between ```)
-              3. Do NOT translate links (URLs) and file paths (./images/...)
-              4. Do NOT translate names, emails
-              5. Preserve ALL Markdown formatting (headers, lists, bold, italic, etc.)
-              6. Preserve ALL emojis and special characters
-              7. Translate ONLY the natural language text
+              Rules:
+              1. Technical terms (UE5, Metahuman, Fay, Unreal Engine, GitHub, AI) MUST stay in English
+              2. Do NOT translate code blocks (between ```)
+              3. Do NOT translate links and file paths (./images/...)
+              4. Preserve ALL Markdown formatting
+              5. Translate only natural language
 
-              Translate the following text to {target} EXACTLY, keeping ALL structure and formatting:
+              Translate to {target}:
 
               {chunk}"""
-              
-              response = client.chat.completions.create(
+              resp = client.chat.completions.create(
                   model="gpt-4o",
                   messages=[{"role": "user", "content": prompt}],
                   temperature=0.3
               )
-              return response.choices[0].message.content
+              return resp.choices[0].message.content
 
-          # Read the original README
           with open("README.md", "r", encoding="utf-8") as f:
               text = f.read()
 
-          # Split into paragraphs
           paragraphs = re.split(r'\n\n+', text)
           chunks, current, tokens = [], [], 0
           MAX_TOKENS = 5000
@@ -141,11 +127,9 @@ jobs:
               p_tokens = count_tokens(para) + 50
               if tokens + p_tokens > MAX_TOKENS and current:
                   try:
-                      translated_chunk = translate_chunk("\n\n".join(current), target_lang)
-                      # Fix links for images and files (for files in subfolder)
-                      translated_chunk = translated_chunk.replace('](/', '](<../')
-                      translated_chunk = translated_chunk.replace('(./', '(<../')
-                      chunks.append(translated_chunk)
+                      translated = translate_chunk("\n\n".join(current), target_lang)
+                      translated = translated.replace('](/', '](<../').replace('(./', '(<../')
+                      chunks.append(translated)
                   except Exception as e:
                       print(f"Translation error: {e}")
                       chunks.append("\n\n".join(current))
@@ -156,23 +140,20 @@ jobs:
 
           if current:
               try:
-                  translated_chunk = translate_chunk("\n\n".join(current), target_lang)
-                  translated_chunk = translated_chunk.replace('](/', '](<../')
-                  translated_chunk = translated_chunk.replace('(./', '(<../')
-                  chunks.append(translated_chunk)
+                  translated = translate_chunk("\n\n".join(current), target_lang)
+                  translated = translated.replace('](/', '](<../').replace('(./', '(<../')
+                  chunks.append(translated)
               except Exception as e:
                   print(f"Translation error: {e}")
                   chunks.append("\n\n".join(current))
 
-          translated = "\n\n".join(chunks)
+          result = "\n\n".join(chunks)
 
-          # Create LanguageReadme directory and save translation directly
           os.makedirs("LanguageReadme", exist_ok=True)
-          output_path = os.path.join("LanguageReadme", target_file)
-          with open(output_path, "w", encoding="utf-8") as f:
-              f.write(translated)
+          with open(f"LanguageReadme/{output_file}", "w", encoding="utf-8") as f:
+              f.write(result)
 
-          print(f"Saved translation to {output_path}")
+          print(f"Saved to LanguageReadme/{output_file}")
           EOF
 
       - name: Upload translation
@@ -183,11 +164,10 @@ jobs:
 
   # ==================== 3. FINAL BUILD ====================
   final-build:
-    needs: [translate, generate-language-index]
+    needs: translate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
@@ -197,13 +177,11 @@ jobs:
         run: |
           mkdir -p LanguageReadme .github/README_PARTS
 
-          # Restore language index
           if [ -f artifacts/0.Language.md ]; then
             cp artifacts/0.Language.md .github/README_PARTS/
             echo "Restored 0.Language.md"
           fi
 
-          # Restore translations
           for file in README.ru.md README.en.md README.fr.md; do
             if [ -f "artifacts/$file" ]; then
               cp "artifacts/$file" LanguageReadme/
@@ -241,9 +219,9 @@ jobs:
           title: "chore: update README translations"
           body: |
             Translation updates:
-            - 🇷🇺 Russian
-            - 🇬🇧 English
-            - 🇫🇷 French
+            - Russian
+            - English
+            - French
 
             Run: ${{ github.run_id }}
           branch: ${{ env.BRANCH_PREFIX }}translations-${{ github.run_id }}
