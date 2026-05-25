@@ -170,11 +170,17 @@ jobs:
 
           result = "\n\n".join(chunks)
 
-          # Дополнительная глобальная замена на всякий случай
+          # Fix markdown
           result = re.sub(r'\]\(\./', '](<../', result)
           result = re.sub(r'\]\(<\./', '](<../', result)
           result = re.sub(r'\(\./', '(<../', result)
           result = re.sub(r'\(<\./', '(<../', result)
+
+          # Fix HTML
+          result = re.sub(r'srcset="\./', 'srcset="../', result)
+          result = re.sub(r'src="\./', 'src="../', result)
+          result = re.sub(r"srcset='\./", "srcset='../", result)
+          result = re.sub(r"src='\./", "src='../", result)
 
           os.makedirs("LanguageReadme", exist_ok=True)
           with open(f"LanguageReadme/{output_file}", "w", encoding="utf-8") as f:
