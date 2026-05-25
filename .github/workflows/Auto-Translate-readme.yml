@@ -87,9 +87,9 @@ jobs:
         run: pip install openai tiktoken
 
       - name: Translate to ${{ matrix.language }}
-        id: translate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_FILE: ${{ matrix.file }}
         run: |
           python - <<'EOF'
           import os, openai, tiktoken, re
@@ -99,6 +99,8 @@ jobs:
               api_key=os.environ["GITHUB_TOKEN"]
           )
           encoding = tiktoken.encoding_for_model("gpt-4o")
+          target_lang = "${{ matrix.language }}"
+          target_file = os.environ["TARGET_FILE"]
 
           def count_tokens(text):
               return len(encoding.encode(text))
@@ -139,7 +141,7 @@ jobs:
               p_tokens = count_tokens(para) + 50
               if tokens + p_tokens > MAX_TOKENS and current:
                   try:
-                      translated_chunk = translate_chunk("\n\n".join(current), "${{ matrix.language }}")
+                      translated_chunk = translate_chunk("\n\n".join(current), target_lang)
                       # Fix links for images and files (for files in subfolder)
                       translated_chunk = translated_chunk.replace('](/', '](<../')
                       translated_chunk = translated_chunk.replace('(./', '(<../')
@@ -154,8 +156,7 @@ jobs:
 
           if current:
               try:
-                  translated_chunk = translate_chunk("\n\n".join(current), "${{ matrix.language }}")
-                  # Fix links for images and files (for files in subfolder)
+                  translated_chunk = translate_chunk("\n\n".join(current), target_lang)
                   translated_chunk = translated_chunk.replace('](/', '](<../')
                   translated_chunk = translated_chunk.replace('(./', '(<../')
                   chunks.append(translated_chunk)
@@ -165,31 +166,14 @@ jobs:
 
           translated = "\n\n".join(chunks)
 
-          # Save to output
-          with open("translated_temp.md", "w", encoding="utf-8") as f:
+          # Create LanguageReadme directory and save translation directly
+          os.makedirs("LanguageReadme", exist_ok=True)
+          output_path = os.path.join("LanguageReadme", target_file)
+          with open(output_path, "w", encoding="utf-8") as f:
               f.write(translated)
 
-          with open("translated_temp.md", "r", encoding="utf-8") as f:
-              translated_content = f.read()
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-              print("translated-text<<EOF", file=out)
-              print(translated_content, file=out)
-              print("EOF", file=out)
+          print(f"Saved translation to {output_path}")
           EOF
-
-      - name: Save translation
-        run: |
-          mkdir -p LanguageReadme
-          
-          printf '%s' "${{ steps.translate.outputs.translated-text }}" > "LanguageReadme/${{ matrix.file }}"
-          
-          if [ -f "LanguageReadme/${{ matrix.file }}" ] && [ -s "LanguageReadme/${{ matrix.file }}" ]; then
-            echo "Successfully saved translation to LanguageReadme/${{ matrix.file }}"
-          else
-            echo "ERROR: Failed to save translation"
-            exit 1
-          fi
 
       - name: Upload translation
         uses: actions/upload-artifact@v5
