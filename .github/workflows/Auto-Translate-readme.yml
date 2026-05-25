@@ -205,21 +205,29 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: main
 
-      - uses: actions/download-artifact@v5
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
         with:
-          name: final-output
           path: artifacts
           merge-multiple: true
 
       - name: Restore files
         run: |
           mkdir -p LanguageReadme .github/README_PARTS
-
-          cp artifacts/README.ru.md LanguageReadme/ 2>/dev/null || true
-          cp artifacts/README.en.md LanguageReadme/ 2>/dev/null || true
-          cp artifacts/README.fr.md LanguageReadme/ 2>/dev/null || true
-          cp artifacts/0.Language.md .github/README_PARTS/0.Language.md 2>/dev/null || true
+          # Проверим, что скачалось
+          ls -la artifacts/
+          # Копируем, если файлы есть
+          [ -f artifacts/README.ru.md ] && cp artifacts/README.ru.md LanguageReadme/ || echo "README.ru.md not found"
+          [ -f artifacts/README.en.md ] && cp artifacts/README.en.md LanguageReadme/ || echo "README.en.md not found"
+          [ -f artifacts/README.fr.md ] && cp artifacts/README.fr.md LanguageReadme/ || echo "README.fr.md not found"
+          [ -f artifacts/0.Language.md ] && cp artifacts/0.Language.md .github/README_PARTS/ || echo "0.Language.md not found"
+          # Покажем, что скопировалось
+          echo "Contents of LanguageReadme:"
+          ls -la LanguageReadme/
+          echo "Contents of .github/README_PARTS:"
+          ls -la .github/README_PARTS/
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
