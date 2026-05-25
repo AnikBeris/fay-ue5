@@ -47,7 +47,7 @@ jobs:
     needs: generate-language-index
     runs-on: ubuntu-latest
     strategy:
-      max-parallel: 1                      # переводим по очереди
+      max-parallel: 1
       matrix:
         include:
           - language: "russian"
@@ -105,6 +105,7 @@ jobs:
               3. Do NOT translate links and file paths (./images/...)
               4. Preserve ALL Markdown formatting
               5. Translate only natural language
+              6. Do NOT wrap the output in ```markdown or any other code fences. Return raw Markdown only.
 
               Translate to {target}:
 
@@ -128,7 +129,18 @@ jobs:
               if tokens + p_tokens > MAX_TOKENS and current:
                   try:
                       translated = translate_chunk("\n\n".join(current), target_lang)
-                      translated = translated.replace('](/', '](<../').replace('(./', '(<../')
+                      # Удаляем возможные обрамления ```markdown ... ```
+                      if translated.startswith('```markdown'):
+                          translated = re.sub(r'^```markdown\s*\n', '', translated)
+                          translated = re.sub(r'\n```\s*$', '', translated)
+                      elif translated.startswith('```'):
+                          translated = re.sub(r'^```\s*\n', '', translated)
+                          translated = re.sub(r'\n```\s*$', '', translated)
+                      # Корректируем ссылки для папки LanguageReadme
+                      translated = re.sub(r'\]\(\./', '](<../', translated)
+                      translated = re.sub(r'\]\(<\./', '](<../', translated)
+                      translated = re.sub(r'\(\./', '(<../', translated)
+                      translated = re.sub(r'\(<\./', '(<../', translated)
                       chunks.append(translated)
                   except Exception as e:
                       print(f"Translation error: {e}")
@@ -141,7 +153,16 @@ jobs:
           if current:
               try:
                   translated = translate_chunk("\n\n".join(current), target_lang)
-                  translated = translated.replace('](/', '](<../').replace('(./', '(<../')
+                  if translated.startswith('```markdown'):
+                      translated = re.sub(r'^```markdown\s*\n', '', translated)
+                      translated = re.sub(r'\n```\s*$', '', translated)
+                  elif translated.startswith('```'):
+                      translated = re.sub(r'^```\s*\n', '', translated)
+                      translated = re.sub(r'\n```\s*$', '', translated)
+                  translated = re.sub(r'\]\(\./', '](<../', translated)
+                  translated = re.sub(r'\]\(<\./', '](<../', translated)
+                  translated = re.sub(r'\(\./', '(<../', translated)
+                  translated = re.sub(r'\(<\./', '(<../', translated)
                   chunks.append(translated)
               except Exception as e:
                   print(f"Translation error: {e}")
@@ -149,11 +170,20 @@ jobs:
 
           result = "\n\n".join(chunks)
 
+          # Дополнительная глобальная замена на всякий случай
+          result = re.sub(r'\]\(\./', '](<../', result)
+          result = re.sub(r'\]\(<\./', '](<../', result)
+          result = re.sub(r'\(\./', '(<../', result)
+          result = re.sub(r'\(<\./', '(<../', result)
+
           os.makedirs("LanguageReadme", exist_ok=True)
           with open(f"LanguageReadme/{output_file}", "w", encoding="utf-8") as f:
               f.write(result)
 
+          # Отладка: вывести первые 500 символов
           print(f"Saved to LanguageReadme/{output_file}")
+          print("First 500 chars:")
+          print(result[:500])
           EOF
 
       - name: Upload translation
@@ -216,17 +246,14 @@ jobs:
       - name: Restore files
         run: |
           mkdir -p LanguageReadme .github/README_PARTS
-          # Проверим, что скачалось
           ls -la artifacts/
-          # Копируем, если файлы есть
           [ -f artifacts/README.ru.md ] && cp artifacts/README.ru.md LanguageReadme/ || echo "README.ru.md not found"
           [ -f artifacts/README.en.md ] && cp artifacts/README.en.md LanguageReadme/ || echo "README.en.md not found"
           [ -f artifacts/README.fr.md ] && cp artifacts/README.fr.md LanguageReadme/ || echo "README.fr.md not found"
           [ -f artifacts/0.Language.md ] && cp artifacts/0.Language.md .github/README_PARTS/ || echo "0.Language.md not found"
-          # Покажем, что скопировалось
-          echo "Contents of LanguageReadme:"
+          echo "LanguageReadme contents:"
           ls -la LanguageReadme/
-          echo "Contents of .github/README_PARTS:"
+          echo "README_PARTS contents:"
           ls -la .github/README_PARTS/
 
       - name: Create Pull Request
