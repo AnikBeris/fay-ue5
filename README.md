@@ -11,7 +11,7 @@
 
 [![GitHub](https://img.shields.io/badge/GitHub-blue?style=flat&logo=github)](https://github.com/xszyou)
 [![License](https://img.shields.io/badge/License-purple?style=flat&logo=github)](https://github.com/xszyou/fay-ue5/blob/main/LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/xszyou?style=flat&logo=github&label=Stars&color=orange)](https://github.com/xszyou)
+[![GitHub Stars](https://img.shields.io/github/stars/xszyou/fay-ue5?style=flat&logo=github&label=Stars&color=orange)](https://github.com/xszyou)
 
 </div>
 
