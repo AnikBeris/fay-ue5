@@ -209,7 +209,17 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           name: final-output
-          path: .
+          path: artifacts
+          merge-multiple: true
+
+      - name: Restore files
+        run: |
+          mkdir -p LanguageReadme .github/README_PARTS
+
+          cp artifacts/README.ru.md LanguageReadme/ 2>/dev/null || true
+          cp artifacts/README.en.md LanguageReadme/ 2>/dev/null || true
+          cp artifacts/README.fr.md LanguageReadme/ 2>/dev/null || true
+          cp artifacts/0.Language.md .github/README_PARTS/0.Language.md 2>/dev/null || true
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
